@@ -24,8 +24,6 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
-
-
 #include "stdafx.h"
 
 #include <stdio.h>
@@ -40,8 +38,13 @@
 
 #include "openslide\openslide.h"
 
+#include "opencv2\core\core.hpp"
+#include "opencv2\highgui\highgui.hpp"
+#include "opencv2\imgproc\imgproc.hpp"
 
 /* -------------------------------------------------------------------------- */
+
+FILE* fileLog;
 
 /**
 sample error debug callback expecting no client object
@@ -49,6 +52,7 @@ sample error debug callback expecting no client object
 static void error_callback(const char *msg, void *client_data) {
 	(void)client_data;
 	fprintf(stdout, "[ERROR] %s", msg);
+	fprintf(fileLog, "[ERROR] %s", msg);
 }
 /**
 sample warning debug callback expecting no client object
@@ -56,6 +60,7 @@ sample warning debug callback expecting no client object
 static void warning_callback(const char *msg, void *client_data) {
 	(void)client_data;
 	fprintf(stdout, "[WARNING] %s", msg);
+	fprintf(fileLog, "[WARNING] %s", msg);
 }
 /**
 sample debug callback expecting no client object
@@ -63,25 +68,44 @@ sample debug callback expecting no client object
 static void info_callback(const char *msg, void *client_data) {
 	(void)client_data;
 	fprintf(stdout, "[INFO] %s", msg);
+	fprintf(fileLog, "[INFO] %s", msg);
 }
 
 /* -------------------------------------------------------------------------- */
 
 #define NUM_COMPS_MAX 4
-int main(int argc, char *argv[])
+int asmain(int argc, char *argv[])
 {
+	char input_file[128];
+	char output_file[64];
+
+	int32_t level;
+
+	if (argc == 4) {
+		strcpy(input_file, argv[1]);
+		level = atoi(argv[2]);
+		strcpy(output_file, argv[3]);
+	}
+	else {
+		strcpy(input_file, "D:\\temp\\Charite\\Camelyon16\\Tumor\\Tumor_001.tif");
+		strcpy(output_file, "Tumor_001.jp2");
+		level = 0;
+	}
+
+	fileLog = fopen("log.txt", "w+");
+
 	/* FIRST EXTRACT SOME INFORMATION ABOUT THE SLIDES */
-	openslide_t* slide = openslide_open("D:\\temp\\Charite\\Camelyon16\\Tumor\\Tumor_002.tif");
-	openslide_t* mask = openslide_open("D:\\temp\\Charite\\Camelyon16\\Tumor\\Mask\\Tumor_002_Mask.tif");
+	openslide_t* slide = openslide_open(input_file);
+	//openslide_t* mask = openslide_open("C:\\Users\\kovalenm\\Work\\imgs\\Mask\\Tumor_001_Mask.tif");
 
 	// get the amount of layers
 	int32_t levCount = openslide_get_level_count(slide);
 
 	// get the highest level (with the lowest resolution)
-	int32_t level = (openslide_get_level_count(mask) < openslide_get_level_count(slide)) ? openslide_get_level_count(mask) - 1 : openslide_get_level_count(slide) - 1;
+	//int32_t level = (openslide_get_level_count(mask) < openslide_get_level_count(slide)) ? openslide_get_level_count(mask) - 1 : openslide_get_level_count(slide) - 1;
 
 	// set it to the lowest layer (the true resoluion, i.e. in Gigapixels)
-	level = 0;
+	//level = 0;
 
 	// get the downsample rate for every layer
 	double *ds = new double[levCount];
@@ -96,7 +120,10 @@ int main(int argc, char *argv[])
 
 	// get tile width/height at current level
 	int64_t size = 4096 * ds[0] / ds[level];
-	size = 512;
+	//	size = 512;
+
+	width = (int64_t)ceil((double)width / (double)size) * (int64_t)size;
+	height = (int64_t)ceil((double)height / (double)size) * (int64_t)size;
 
 	fprintf(stdout, "\nPrinting information\nW = %d\nH = %d\nSize = %d\n", width, height, size);
 
@@ -146,7 +173,6 @@ int main(int argc, char *argv[])
 	int tile_height;
 	int comp_prec;
 	int irreversible;
-	char output_file[64];
 
 	// set image data, i.e. dimensions, tile size, components, name
 	num_comps = 4;
@@ -155,13 +181,12 @@ int main(int argc, char *argv[])
 	tile_width = size;
 	tile_height = size;
 	comp_prec = 8;
-	irreversible = 1;
+	irreversible = 0;
 
 	//fprintf(stdout, "tiles: %d x %d\n", tile_width, tile_height);
 
 	// name of output image
 	// TODO: make it so that the output name is automatically derived from the input
-	strcpy(output_file, "Tumor_002.jp2");
 
 	// check if the current number of components is within limits (cannot be higher than 4)
 	if (num_comps > NUM_COMPS_MAX)
@@ -186,9 +211,9 @@ int main(int argc, char *argv[])
 	/** you may here add custom encoding parameters */
 	/* rate specifications */
 	/** number of quality layers in the stream */
-	l_param.tcp_numlayers = levCount;
+	l_param.tcp_numlayers = 1;
 	l_param.cp_fixed_quality = 1;
-	l_param.tcp_distoratio[0] = 20;
+	l_param.tcp_distoratio[0] = 10; // 20!!
 	/* is using others way of calculation */
 	/* l_param.cp_disto_alloc = 1 or l_param.cp_fixed_alloc = 1 */
 	/* l_param.tcp_rates[0] = ... */
@@ -231,8 +256,8 @@ int main(int argc, char *argv[])
 	/** J2K_CCP_CBLKSTY_TERMALL, J2K_CCP_CBLKSTY_LAZY, J2K_CCP_CBLKSTY_VSC, J2K_CCP_CBLKSTY_SEGSYM, J2K_CCP_CBLKSTY_RESET */
 	/* l_param.mode = 0;*/
 
-	/** number of resolutions */
-	l_param.numresolution = 6;
+	/** number of resolutions = 6 */
+	l_param.numresolution = levCount - level;
 
 	/** progression order to use*/
 	/** OPJ_LRCP, OPJ_RLCP, OPJ_RPCL, PCRL, CPRL */
@@ -304,11 +329,12 @@ int main(int argc, char *argv[])
 
 	if (!opj_setup_encoder(l_codec, &l_param, l_image)) {
 		fprintf(stderr, "ERROR -> test_tile_encoder: failed to setup the codec!\n");
+		fprintf(fileLog, "ERROR -> test_tile_encoder: failed to setup the codec!\n");
 		opj_destroy_codec(l_codec);
 		opj_image_destroy(l_image);
 
 		openslide_close(slide);
-		openslide_close(mask);
+		//openslide_close(mask);
 
 		return 1;
 	}
@@ -316,23 +342,25 @@ int main(int argc, char *argv[])
 	l_stream = opj_stream_create_default_file_stream(output_file, OPJ_FALSE);
 	if (!l_stream) {
 		fprintf(stderr, "ERROR -> test_tile_encoder: failed to create the stream from the output file %s !\n", output_file);
+		fprintf(fileLog, "ERROR -> test_tile_encoder: failed to create the stream from the output file %s !\n", output_file);
 		opj_destroy_codec(l_codec);
 		opj_image_destroy(l_image);
 
 		openslide_close(slide);
-		openslide_close(mask);
+		//openslide_close(mask);
 
 		return 1;
 	}
 
 	if (!opj_start_compress(l_codec, l_image, l_stream)) {
 		fprintf(stderr, "ERROR -> test_tile_encoder: failed to start compress!\n");
+		fprintf(fileLog, "ERROR -> test_tile_encoder: failed to start compress!\n");
 		opj_stream_destroy(l_stream);
 		opj_destroy_codec(l_codec);
 		opj_image_destroy(l_image);
 
 		openslide_close(slide);
-		openslide_close(mask);
+		//openslide_close(mask);
 
 		return 1;
 	}
@@ -340,63 +368,91 @@ int main(int argc, char *argv[])
 	fprintf(stdout, "\nPrinting information\nl_nb_tiles_x = %d\nl_nb_tiles_y = %d\nl_nb_tiles = %d\n", l_nb_tiles_x, l_nb_tiles_y, l_nb_tiles);
 
 	OPJ_INT32 tNum = 0;
-	for (int x = 0; x < l_nb_tiles_x; ++x) {
-		for (int y = 0; y < l_nb_tiles_y; ++y) {
+	int64_t step = 4096;
+	for (int y = 0; y < l_nb_tiles_y; ++y) {
+		for (int x = 0; x < l_nb_tiles_x; ++x) {
 
-		//	fprintf(stdout, "\ntile coord [%d ; %d], tile num = %d\n", x * size, y * size, tNum);
+			//fprintf(stdout, "\ntile coord [%d ; %d]\ntile num = %d\n", x * size, y * size, tNum);
 
 			// read tile
-			openslide_read_region(slide, tile, x * size, y * size, level, size, size);
+			free(tile);
+		//	fprintf(stdout, "\nAllocating memory...");
+			tile = (uint32_t*)malloc(tileSize);
+		//	fprintf(stdout, "\nReading region from slide...");
+			openslide_read_region(slide, tile, x * step, y * step, level, size, size);
+			//fprintf(stdout, "\ntile coord [%d ; %d]\ntile num = %d", x * size, y * size, tNum);
 
-			//fprintf(stdout, "just to check, tilesize = %d, tilesize * 4 = %d, and l_data_size = %d\n", tileSize, tileSize * 4, l_data_size);
+			//	fprintf(stdout, "just to check, tilesize = %d, tilesize * 4 = %d, and l_data_size = %d\n", tileSize, tileSize * 4, l_data_size);
 
-			int i = 0;
-			for (OPJ_INT32 j = 0, i = 0; j < offset; ++j) {
-				// take one pixel
-				int32_t pixel = tile[j];
+			// use OpenCV and memCpy to quickly copy the data
+	//		fprintf(stdout, "\nCopying to OpenCV Mat...");
+			cv::Mat img(size, size, CV_8UC4, tile);
+			cv::Mat img2;
+			img.copyTo(img2);
 
-				// convert it to bytes (4 bytes in 1 pixel, i.e. R, G, B and A)
-				OPJ_BYTE
-					R_bit = (pixel & 0x000000ff),
-					G_bit = (pixel & 0x0000ff00) >> 8,
-					B_bit = (pixel & 0x00ff0000) >> 16,
-					A_bit = (pixel & 0xff000000) >> 24;
+//			fprintf(stdout, "\nSplitting channels...");
+			cv::Mat bgra[4];   //destination array
+			cv::split(img2, bgra);//split source 
 
-				// write the bytes into the data stream
-				l_data[j]								= R_bit;
-				l_data[j + 1 * offset]	= G_bit;
-				l_data[j + 2 * offset]	= B_bit;
-				l_data[j + 3 * offset]	= A_bit;
-				//l_data[j] = (OPJ_BYTE)pixel;
+	//		fprintf(stdout, "\nCopying channels to l_data...");
+			int bytesize = bgra[0].total() * bgra[0].elemSize();
+			std::memcpy(l_data, bgra[2].data, bytesize * sizeof(OPJ_BYTE));
+			std::memcpy(l_data + offset * 1, bgra[1].data, bytesize * sizeof(OPJ_BYTE));
+			std::memcpy(l_data + offset * 2, bgra[0].data, bytesize * sizeof(OPJ_BYTE));
+			std::memcpy(l_data + offset * 3, bgra[3].data, bytesize * sizeof(OPJ_BYTE));
 
-				//i += num_comps;
-			}
+			//std::memcpy(l_data, img2.data, img2.total() * sizeof(OPJ_BYTE));
 
+
+			//for (int j = 0; j < offset; ++j) {
+			//	// take one pixel
+			//	int32_t pixel = tile[j];
+
+			//	// convert it to bytes (4 bytes in 1 pixel, i.e. R, G, B and A)
+			//	OPJ_BYTE
+			//		B_bit = (pixel & 0x000000ff),
+			//		G_bit = (pixel & 0x0000ff00) >> 8,
+			//		R_bit = (pixel & 0x00ff0000) >> 16,
+			//		A_bit = (pixel & 0xff000000) >> 24;
+			//
+			//	// write the bytes into the data stream
+
+			//	l_data[j]				= (OPJ_BYTE)R_bit;
+			//	l_data[j + offset]		= (OPJ_BYTE)G_bit;
+			//	l_data[j + 2 * offset]	= (OPJ_BYTE)B_bit;
+			//	l_data[j + 3 * offset]	= (OPJ_BYTE)A_bit;
+
+			//	//l_data[j] = (OPJ_BYTE)pixel;			
+			//}
+
+	//		fprintf(stdout, "\nWriting to file...\n");
 			// write the tile into the file
 			if (!opj_write_tile(l_codec, tNum, l_data, l_data_size, l_stream)) {
-				fprintf(stderr, "ERROR -> test_tile_encoder: failed to write the tile %d!\n", i);
+				fprintf(stderr, "ERROR -> test_tile_encoder: failed to write the tile %d!\n", tNum);
+				fprintf(fileLog, "ERROR -> test_tile_encoder: failed to write the tile %d!\n", tNum);
 				opj_stream_destroy(l_stream);
 				opj_destroy_codec(l_codec);
 				opj_image_destroy(l_image);
 
 				openslide_close(slide);
-				openslide_close(mask);
+				//	openslide_close(mask);
 
 				return 1;
 			}
-
+//			fprintf(stdout, "DONE!");
 			tNum++;
 		}
 	}
 
 	if (!opj_end_compress(l_codec, l_stream)) {
 		fprintf(stderr, "ERROR -> test_tile_encoder: failed to end compress!\n");
+		fprintf(fileLog, "ERROR -> test_tile_encoder: failed to end compress!\n");
 		opj_stream_destroy(l_stream);
 		opj_destroy_codec(l_codec);
 		opj_image_destroy(l_image);
 
 		openslide_close(slide);
-		openslide_close(mask);
+		//openslide_close(mask);
 
 		return 1;
 	}
@@ -408,177 +464,18 @@ int main(int argc, char *argv[])
 	free(l_data);
 
 	openslide_close(slide);
-	openslide_close(mask);
+	//openslide_close(mask);
+
 
 	/* Print profiling*/
 	/*PROFPRINT();*/
 
+	fprintf(fileLog, "Completed successfully!");
+
+	fclose(fileLog);
+
+
+	getchar();
+
 	return 0;
 }
-
-
-
-
-
-//// OpenSlideExtractor1.cpp : Defines the entry point for the console application.
-////
-//
-//#include "stdafx.h"
-//
-//#include <stdlib.h>
-//#include <stdint.h>
-//#include <limits.h>
-//#include <assert.h>
-//
-//#include "openslide\openslide.h"
-//
-//#include "openjpeg.h"
-//#include "opj_stdint.h"
-//
-//#include "opencv2\core\core.hpp"
-//#include "opencv2\highgui\highgui.hpp"
-//#include "opencv2\imgproc\imgproc.hpp"
-//
-///* USING OpenCV */
-//
-//int main(int argc, char* argv[])
-//{
-//	openslide_t* slide = openslide_open("D:\\temp\\Charite\\Camelyon16\\Tumor\\Tumor_001.tif");
-//	openslide_t* mask = openslide_open("D:\\temp\\Charite\\Camelyon16\\Tumor\\Mask\\Tumor_001_Mask.tif");
-//
-//	int32_t levCount = openslide_get_level_count(slide);
-//
-//	int32_t level = (openslide_get_level_count(mask) < openslide_get_level_count(slide)) ? openslide_get_level_count(mask) - 1 : openslide_get_level_count(slide) - 1;
-//
-//	level = 0;
-//
-//	double *ds = new double[levCount];
-//	for (int i = 0; i < levCount; i++) {
-//		ds[i] = openslide_get_level_downsample(slide, i);
-//		std::cout << "ds[" << i << "]  = " << ds[i] << ", " << 4096 * ds[0] / ds[i] << std::endl;
-//	}
-//
-//	int64_t x = 0, y = 0, width, height;
-//	int64_t size = 4096 * ds[0] / ds[level];
-//	size = 512;
-//	size_t tileSize = size * size * 4;
-//	uint32_t *tile = (uint32_t*)malloc(tileSize);
-//
-//	for (;;) {
-//
-//		free(tile);
-//
-//		openslide_get_level_dimensions(slide, 0, &width, &height);
-//		//width = 512; height = 512;		
-//		//size = 4096 * ds[0] / ds[level];
-//		
-//		// tileSize = size * size * 4;
-//		tile = (uint32_t*)malloc(tileSize);
-//		//size_t tileSize = width * height * 4;
-//		//tile = (uint32_t*)malloc(tileSize);
-//
-//		openslide_read_region(slide, tile, x, y, level, size, size);
-//		//openslide_read_region(slide, tile, x, y, 0, width, height);
-//
-//		cv::Mat img(size, size, CV_8UC4, tile);
-//		//cv::Mat img(height, width, CV_8UC4, tile);
-//		cv::Mat img2;
-//		img.copyTo(img2);
-//
-//		cv::imshow("image", img2);
-//
-//		int c = cv::waitKey(10);
-//
-//		if (27 == char(c))
-//			break;
-//		else if (char(c) == 'd') {
-//			x += size;
-//			if (x > width) x = width - size - 1;
-//
-//			std::cout << "x = " << x << ", y = " << y << std::endl;
-//		}
-//		else if (char(c) == 's') {
-//			y += size;
-//			if (y > height) y = height - size - 1;
-//
-//			std::cout << "x = " << x << ", y = " << y << std::endl;
-//		}
-//		else if (char(c) == 'w') {
-//			y -= size;
-//			if (y < 0) y = 0;
-//
-//			std::cout << "x = " << x << ", y = " << y << std::endl;
-//		}
-//		else if (char(c) == 'a') {
-//			x -= size;
-//			if (x < 0) x = 0;
-//
-//			std::cout << "x = " << x << ", y = " << y << std::endl;
-//		}
-//		else if (char(c) == 'q') {
-//			level--;
-//			if (level < 0) level = 0;
-//		}
-//		else if (char(c) == 'e') {
-//			level++;
-//			if (level > levCount - 1) level = levCount - 1;
-//		}
-//		else
-//			continue;
-//
-//	}
-//
-//	openslide_close(slide);
-//	openslide_close(mask);
-//
-//	//max_level -= 3;
-//	/*
-//	int64_t width, height;
-//	openslide_get_level_dimensions(slide, max_level, &width, &height);
-//
-//	size_t imgSize = width * height * 4;
-//
-//	uint32_t *imgData = (uint32_t*)malloc(imgSize);
-//	std::vector<uint32_t> dst(width*height*4);
-//	openslide_read_region(slide, imgData, 0, 0, max_level, width, height);
-//	openslide_read_region(slide, &dst[0], 0, 0, max_level, width, height);
-//
-//	for (size_t i = 600; i < 650; i++)
-//	{
-//	int32_t pixel = imgData[i];
-//
-//	unsigned char byte1 = pixel & 0x000000ff,
-//	byte2 = (pixel & 0x0000ff00) >> 8,
-//	byte3 = (pixel & 0x00ff0000) >> 16,
-//	byte4 = (pixel & 0xff000000) >> 24;
-//
-//	//std::cout << (int)byte1 << "," << (int)byte2 << "," << (int)byte3 << "," << (int)byte4 << std::endl;
-//	}
-//
-//
-//	cv::Mat img(height, width, CV_8UC4, imgData);
-//	cv::Mat img2;
-//	img.copyTo(img2);
-//
-//	cv::Mat img3;
-//	cv::cvtColor(img2, img3, CV_RGBA2BGR);
-//
-//	//cv::imwrite("C:\\Users\\kovalenm\\Work\\imgs\\Tumor_001_4.jp2", img3);
-//
-//	for (;;) {
-//	cv::imshow("image", img2);
-//
-//	int c = cv::waitKey(10);
-//
-//	if (27 == char(c))
-//	break;
-//	}
-//
-//	openslide_close(slide);
-//	openslide_close(mask);
-//
-//	*/
-//
-//	return 0;
-//}
-//

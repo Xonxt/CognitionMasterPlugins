@@ -62,7 +62,7 @@ static void info_callback(const char *msg, void *client_data) {
 /* -------------------------------------------------------------------------- */
 
 #define NUM_COMPS_MAX 4
-int ssmain(int argc, char *argv[])
+int asdssssmain(int argc, char *argv[])
 {
 	opj_cparameters_t l_param;
 	opj_codec_t * l_codec;
@@ -115,10 +115,10 @@ int ssmain(int argc, char *argv[])
 	else
 	{
 		num_comps = 4;
-		image_width = 2000;
-		image_height = 2000;
-		tile_width = 1000;
-		tile_height = 1000;
+		image_width = 4096;
+		image_height = 4096;
+		tile_width = 512;
+		tile_height = 512;
 		comp_prec = 8;
 		irreversible = 1;
 		strcpy(output_file, "test.jp2");
@@ -134,19 +134,6 @@ int ssmain(int argc, char *argv[])
 
 	fprintf(stdout, "Encoding random values -> keep in mind that this is very hard to compress\n");
 	
-	OPJ_UINT32 offset = (OPJ_UINT32)l_data_size / (OPJ_UINT32)num_comps;
-	
-
-	for (i = 0; i < offset; ++i)	{
-
-		OPJ_BYTE rgb[] = {255, 215, 0, 255};
-
-		l_data[i] = (OPJ_BYTE) rgb[0];
-		l_data[i + offset] = (OPJ_BYTE)rgb[1];
-		l_data[i + offset * 2] = (OPJ_BYTE)rgb[2];
-		l_data[i + offset * 3] = (OPJ_BYTE)rgb[3];
-	}
-
 	opj_set_default_encoder_parameters(&l_param);
 	/** you may here add custom encoding parameters */
 	/* rate specifications */
@@ -197,7 +184,7 @@ int ssmain(int argc, char *argv[])
 	/* l_param.mode = 0;*/
 
 	/** number of resolutions */
-	l_param.numresolution = 6;
+	l_param.numresolution = 10;
 
 	/** progression order to use*/
 	/** OPJ_LRCP, OPJ_RLCP, OPJ_RPCL, PCRL, CPRL */
@@ -291,7 +278,22 @@ int ssmain(int argc, char *argv[])
 		return 1;
 	}
 
+	OPJ_UINT32 offset = (OPJ_UINT32)l_data_size / (OPJ_UINT32)num_comps;
+
 	for (i = 0; i<l_nb_tiles; ++i) {
+
+		int rr = rand() % 255 + 0;
+
+		for (int j = 0; j < offset; ++j)	{
+
+			OPJ_BYTE rgb[] = { 16, 32, 0, 255 };
+
+			l_data[j] = (OPJ_BYTE)rgb[0];
+			l_data[j + offset] = (OPJ_BYTE)rgb[1];
+			l_data[j + offset * 2] = (OPJ_BYTE)(rgb[2] + rr);
+			l_data[j + offset * 3] = (OPJ_BYTE)(rgb[3]);
+		}
+
 		if (!opj_write_tile(l_codec, i, l_data, l_data_size, l_stream)) {
 			fprintf(stderr, "ERROR -> test_tile_encoder: failed to write the tile %d!\n", i);
 			opj_stream_destroy(l_stream);
